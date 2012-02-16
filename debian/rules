@@ -4,7 +4,7 @@ export DH_VERBOSE=1
 
 # Use Debug version as it's a rather temporary solution
 # and don't strip symbols for easier debugging process.
-#export DEB_BUILD_OPTIONS=nostrip
+export DEB_BUILD_OPTIONS=nostrip
 
 
 # Main build rule, leave everything to debhelper
