@@ -1,0 +1,6 @@
+varnish-vmod-curl (1.0.0-1) experimental; urgency=low
+
+  * Initial release.
+  * Based on varnish 3.0.2-1
+
+ -- Olivier Favre <olivier@yakaz.com>  Thu, 16 Feb 2012 14:29:14 +0100
