@@ -2,6 +2,7 @@
 #include <curl/curl.h>
 #include <ctype.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "vrt.h"
 #include "vsb.h"
@@ -14,6 +15,11 @@ struct hdr {
 	char *key;
 	char *value;
 	VTAILQ_ENTRY(hdr) list;
+};
+
+struct req_hdr {
+	char *value;
+	VTAILQ_ENTRY(req_hdr) list;
 };
 
 struct vmod_curl {
@@ -30,6 +36,7 @@ struct vmod_curl {
 	const char	*cafile;
 	const char	*capath;
 	VTAILQ_HEAD(, hdr) headers;
+	VTAILQ_HEAD(, req_hdr) req_headers;
 	struct vsb	*body;
 };
 
@@ -40,6 +47,7 @@ static pthread_mutex_t cl_mtx = PTHREAD_MUTEX_INITIALIZER;
 static void cm_init(struct vmod_curl *c) {
 	c->magic = VMOD_CURL_MAGIC;
 	VTAILQ_INIT(&c->headers);
+	VTAILQ_INIT(&c->req_headers);
 	c->body = VSB_new_auto();
 	cm_clear(c);
 }
@@ -64,11 +72,24 @@ static void cm_clear_headers(struct vmod_curl *c) {
 	}
 }
 
+static void cm_clear_req_headers(struct vmod_curl *c) {
+	struct req_hdr *rh, *rh2;
+
+	CHECK_OBJ_NOTNULL(c, VMOD_CURL_MAGIC);
+
+	VTAILQ_FOREACH_SAFE(rh, &c->req_headers, list, rh2) {
+		VTAILQ_REMOVE(&c->req_headers, rh, list);
+		free(rh->value);
+		free(rh);
+	}
+}
+
 static void cm_clear(struct vmod_curl *c) {
 	CHECK_OBJ_NOTNULL(c, VMOD_CURL_MAGIC);
 
 	cm_clear_body(c);
 	cm_clear_headers(c);
+	cm_clear_req_headers(c);
 	c->status = 0;
 	c->timeout_ms = -1;
 	c->connect_timeout_ms = -1;
@@ -174,6 +195,8 @@ void vmod_fetch(struct sess *sp, const char *url)
 {
 	CURL *curl_handle;
 	CURLcode cr;
+	struct curl_slist *req_headers = NULL;
+	struct req_hdr *rh;
 
 	struct vmod_curl *c;
 	char *p;
@@ -188,6 +211,12 @@ void vmod_fetch(struct sess *sp, const char *url)
 	curl_handle = curl_easy_init();
 	AN(curl_handle);
 
+	VTAILQ_FOREACH(rh, &c->req_headers, list) {
+		req_headers = curl_slist_append(req_headers, rh->value);
+	}
+
+	if (req_headers)
+		curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, req_headers);
 	curl_easy_setopt(curl_handle, CURLOPT_URL, url);
 	curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL , 1L);
 	curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
@@ -231,6 +260,9 @@ void vmod_fetch(struct sess *sp, const char *url)
 	curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &c->status);
 
 	VSB_finish(c->body);
+
+	if (req_headers)
+		curl_slist_free_all(req_headers);
 	curl_easy_cleanup(curl_handle);
 }
 
@@ -304,6 +336,43 @@ void vmod_set_ssl_cafile(struct sess *sp, const char *path) {
 
 void vmod_set_ssl_capath(struct sess *sp, const char *path) {
 	cm_get(sp)->capath = path;
+}
+
+void vmod_add_header(struct sess *sp, const char *value)
+{
+	struct vmod_curl *c;
+	struct req_hdr *rh;
+
+	c = cm_get(sp);
+
+	rh = calloc(1, sizeof(struct req_hdr));
+	AN(rh);
+	rh->value = strdup(value);
+	AN(rh->value);
+
+	VTAILQ_INSERT_HEAD(&c->req_headers, rh, list);
+}
+
+void vmod_unset_header(struct sess *sp, const char *header)
+{
+	struct vmod_curl *c;
+	struct req_hdr *rh;
+	char *split, *s;
+
+	c = cm_get(sp);
+
+	VTAILQ_FOREACH(rh, &c->req_headers, list) {
+		s = strdup(rh->value);
+		AN(s);
+		if ((split = strchr(s, ':')) != NULL)
+			*split = '\x0';
+		if (strcasecmp(s, header) == 0) {
+			VTAILQ_REMOVE(&c->req_headers, rh, list);
+			free(rh->value);
+			free(rh);
+		}
+		free(s);
+	}
 }
 
 const char *vmod_escape(struct sess *sp, const char *str) {
