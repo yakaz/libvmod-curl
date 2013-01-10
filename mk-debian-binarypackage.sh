@@ -6,6 +6,7 @@ if [ -d .git ] && [ "$(git status --porcelain | grep -E '^\?\?' | wc -l)" -gt 0 
 fi
 
 VARNISH_VERSION="$(cat debian/VARNISH_VERSION)"
+VARNISH_SOURCE_VERSION="$(cat debian/VARNISH_SOURCE_VERSION)"
 files="$(grep -l -F '${VARNISH_VERSION}' -R debian/)"
 echo 'Replacing ${VARNISH_VERSION} in the following files, for "'"$VARNISH_VERSION"'":'
 echo "$files"
@@ -14,11 +15,11 @@ mkdir debian/before_sed
 echo "$files" | while read f; do dest="debian/before_sed/$(dirname "$f")"; mkdir -p "$dest"; cp "$f" "$dest/"; done
 echo "$files" | xargs -d "\n" sed -i -e 's/\${VARNISH_VERSION}/'"$VARNISH_VERSION"'/g'
 
-echo "Checking out varnish code version $VARNISH_VERSION..."
+echo "Checking out varnish code version $VARNISH_SOURCE_VERSION..."
 rm -Rf debian/varnish-sources
 mkdir debian/varnish-sources
 cd debian/varnish-sources
-apt-get source --only-source --tar-only varnish=$VARNISH_VERSION
+apt-get source --only-source --tar-only varnish=$VARNISH_SOURCE_VERSION
 ftar="$(ls varnish_*.tar*)"
 folder="$(tar tf "$ftar" | grep -E '^[^/]+/$')"
 folder="${folder%/}"

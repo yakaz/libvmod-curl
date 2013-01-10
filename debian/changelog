@@ -1,3 +1,9 @@
+varnish-vmod-curl (1.1.0-2) experimental; urgency=low
+
+  * Based on varnish 3.0.3-1
+
+ -- Olivier Favre <olivier@yakaz.com>  Thu, 10 Jan 2013 11:17:11 +0100
+
 varnish-vmod-curl (1.1.0-1) experimental; urgency=low
 
   * Custom request headers, using
